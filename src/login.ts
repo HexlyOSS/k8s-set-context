@@ -1,5 +1,4 @@
 import * as core from '@actions/core';
-import { issueCommand } from '@actions/core/lib/command';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as io from '@actions/io';
@@ -89,9 +88,11 @@ async function getKubectlPath() {
     return kubectlPath;
 }
 
-async function setContext() {
+async function setContext(kubeconfigPath: string) {
     let context = core.getInput('context');
     if (context) {
+        //To use kubectl commands, the environment variable KUBECONFIG needs to be set for this step 
+        process.env['KUBECONFIG'] = kubeconfigPath;
         const kubectlPath = await getKubectlPath();
         let toolRunner = new ToolRunner(kubectlPath, ['config', 'use-context', context]);
         await toolRunner.exec();
@@ -100,15 +101,16 @@ async function setContext() {
     }
 }
 
-async function run() {
+export async function run() {
     let kubeconfig = getKubeconfig();
     const runnerTempDirectory = process.env['RUNNER_TEMP']; // Using process.env until the core libs are updated
     const kubeconfigPath = path.join(runnerTempDirectory, `kubeconfig_${Date.now()}`);
     core.debug(`Writing kubeconfig contents to ${kubeconfigPath}`);
     fs.writeFileSync(kubeconfigPath, kubeconfig);
-    issueCommand('set-env', { name: 'KUBECONFIG' }, kubeconfigPath);
+    fs.chmodSync(kubeconfigPath, '600');
+    core.exportVariable('KUBECONFIG', kubeconfigPath);
     console.log('KUBECONFIG environment variable is set');
-    await setContext();
+    await setContext(kubeconfigPath);
 }
 
 run().catch(core.setFailed);
